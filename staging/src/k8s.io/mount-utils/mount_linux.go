@@ -32,7 +32,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/moby/sys/mountinfo"
+	"golang.org/x/sys/unix"
 
 	"k8s.io/klog/v2"
 	utilexec "k8s.io/utils/exec"
@@ -727,6 +727,34 @@ func SearchMountPoints(hostSource, mountInfoPath string) ([]string, error) {
 	return refs, nil
 }
 
+func MountedFast(file string) (mounted, sure bool, err error) {
+	var stat, rootStat unix.Statx_t
+
+	if err := unix.Statx(0, file, unix.AT_STATX_DONT_SYNC, 0, &stat); err != nil {
+		if err == unix.ENOSYS {
+			return false, false, errors.New("The statx syscall is not supported. At least Linux kernel 4.11 is needed")
+		}
+
+		return false, false, err
+	}
+
+	root := filepath.Dir(strings.TrimSuffix(file, "/"))
+	if err := unix.Statx(0, root, unix.AT_STATX_DONT_SYNC, 0, &rootStat); err != nil {
+		if err == unix.ENOSYS {
+			return false, false, errors.New("The statx syscall is not supported. At least Linux kernel 4.11 is needed")
+		}
+
+		return false, false, err
+	}
+
+	// TODO add STATX_ATTR_MOUNT_ROOT support
+	// Linux 5.8 commit 80340fe3605c0e78cfe496c3b3878be828cfdbfe
+	// stat->attributes |= STATX_ATTR_MOUNT_ROOT;
+	// stat->attributes_mask |= STATX_ATTR_MOUNT_ROOT;
+
+	return !(stat.Dev_major == rootStat.Dev_major && stat.Dev_minor == rootStat.Dev_minor), true, nil
+}
+
 // IsMountPoint determines if a file is a mountpoint.
 // It first detects bind & any other mountpoints using
 // MountedFast function. If the MountedFast function returns
@@ -746,7 +774,15 @@ func SearchMountPoints(hostSource, mountInfoPath string) ([]string, error) {
 // endpoint is called to enumerate all the mountpoints and check if
 // it is mountpoint match or not.
 func (mounter *Mounter) IsMountPoint(file string) (bool, error) {
-	isMnt, sure, isMntErr := mountinfo.MountedFast(file)
+	//	var realPath string
+	//	if realPath, err = filepath.Abs(file); err != nil {
+	//		return false, err
+	//	}
+	//	if realPath, err = filepath.EvalSymlinks(realPath); err != nil {
+	//		return false, err
+	//	}
+
+	isMnt, sure, isMntErr := MountedFast(realPath)
 	if sure && isMntErr == nil {
 		return isMnt, nil
 	}

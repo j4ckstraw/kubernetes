@@ -124,11 +124,7 @@ func removePathIfNotMountPoint(mountPath string, mounter Interface, extensiveMou
 	var notMnt bool
 	var err error
 
-	if extensiveMountPointCheck {
-		notMnt, err = IsNotMountPoint(mounter, mountPath)
-	} else {
-		notMnt, err = mounter.IsLikelyNotMountPoint(mountPath)
-	}
+	notMnt, err = IsNotMountPoint(mounter, mountPath)
 
 	if err != nil {
 		if os.IsNotExist(err) {
